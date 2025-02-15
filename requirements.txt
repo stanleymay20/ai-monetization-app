@@ -45,7 +45,7 @@ langchain-text-splitters==0.3.6
 langsmith==0.3.8
 msgpack==1.1.0
 multidict==6.1.0
-numpy==2.2.3
+numpy==1.26.4
 openai==1.63.0
 orjson==3.10.15
 packaging==24.2
