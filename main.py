@@ -1,40 +1,52 @@
-from fastapi import FastAPI
-from langchain.chat_models import ChatOpenAI
-from langchain.schema import HumanMessage
-import firebase_admin
-from firebase_admin import credentials, firestore
+import os
 import requests
-from bs4 import BeautifulSoup
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import uvicorn
 
+from dotenv import load_dotenv
+load_dotenv()
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+DEEPSEEK_API_URL = os.getenv("DEEPSEEK_API_URL")
+# Initialize FastAPI app
 app = FastAPI()
 
-# Initialize Firebase
-cred = credentials.Certificate("firebase_credentials.json")
-firebase_admin.initialize_app(cred)
-db = firestore.client()
+# Define request body structure
+class ChatRequest(BaseModel):
+    message: str
 
-# Initialize OpenAI API
-openai = ChatOpenAI(model_name="gpt-4", temperature=0.7)
+@app.post("/chat/")
+async def chat_endpoint(request: ChatRequest):
+    """
+    Handles chat requests by invoking the DeepSeek AI API.
+    """
+    try:
+        headers = {
+            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "deepseek-chat",
+            "messages": [{"role": "user", "content": request.message}],
+            "temperature": 0.7,
+            "max_tokens": 200
+        }
 
-# Scraping Google Trends
-@app.get("/trends")
-def get_trending_topics():
-    url = "https://trends.google.com/trends/trendingsearches/daily?geo=US"
-    headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.text, "html.parser")
-    trends = [trend.text.strip() for trend in soup.find_all("a", class_="title")]
-    return {"trending_topics": trends}
+        response = requests.post(DEEPSEEK_API_URL, json=payload, headers=headers)
+        response_data = response.json()
 
-# AI-Powered Content Generation
-@app.post("/generate-content")
-def generate_content(topic: str):
-    prompt = f"Write an SEO-optimized blog post about {topic}."
-    ai_response = openai([HumanMessage(content=prompt)])
-    doc_ref = db.collection("generated_content").document()
-    doc_ref.set({"topic": topic, "content": ai_response.content})
-    return {"content": ai_response.content}
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail=response_data)
+
+        return {"response": response_data["choices"][0]["message"]["content"]}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
-def home():
-    return {"message": "AI Monetization App is Running!"}
+def root():
+    return {"message": "DeepSeek Chat API is running successfully!"}
+
+# Start the application when executed directly
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
